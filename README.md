@@ -1,23 +1,24 @@
 # BYD Press Fleet
 
-Web app for the PR press-car pool: find a free car for N days, book it, see everything on a calendar.
+Web app for the PR press-car pool, laid out like the original Excel calendar.
 
-- **Find a car**: pick a model and the number of days; every Active car is checked against all bookings and the earliest free dates are listed. One click to book, copy the text for WeCom chat, or export to Excel (per model or all models).
-- **Calendar**: timeline of all cars, coloured by purpose. Click an empty day to book, a bar to edit.
-- **Bookings**: searchable list, cancel instead of delete, Excel export.
-- **Fleet**: cars, plates, VINs, status (only Active cars are offered for booking).
-- **Team**: who has access (admins only).
+- **Calendar** (main screen): yellow Gantt, one row per car: *Model · Colour* over *VIN · Plate*. Press cars first, then company cars (long-term, grey), then unregistered cars.
+  - Click or drag across empty days to reserve exactly those dates.
+  - Click a yellow block: extend / shorten the return date, move the whole booking a day, **swap / change car**, edit, cancel.
+  - **Swap cars**: give a booking another car; if that car is busy with one booking that fits on the first car, the two bookings swap cars in one step.
+  - **List** view with filters and Excel export; the timeline also exports as an Excel grid.
+- **Quick reserve** (yellow button, always visible): model + number of days + client name → every free car, earliest first, one click to reserve. Copy text for WeCom chat, Excel per model or for all models.
+- **Cars**: fleet list, team access, models. Each car's window has **Change plate** and **Swap plates with another car**.
 
-Double bookings are impossible: the database rejects any two non-cancelled bookings of the same car on overlapping days.
+## Data rules
 
-## How it works
-
-Static site (`index.html`, `styles.css`, `app.js`, `config.js`) hosted on GitHub Pages, data in Supabase (project `byd-press-fleet`).
-Only signed-in users whose email is in the `fleet_members` table can read or write (row-level security).
+- A car's permanent identity is its **VIN**. The plate is an attribute with a history (`plate_history`), so plate changes and plate swaps never touch bookings, and searching an old plate still finds the car.
+- Double bookings are impossible: the database rejects overlapping non-cancelled bookings of the same car (also during swaps).
+- Only signed-in users whose email is in `fleet_members` can read or write (row-level security).
 
 ## Adding a colleague
 
-1. In the app, Team tab: add their email.
+1. Cars page → Team access: add their email.
 2. Supabase dashboard → Authentication → Users → Add user → Create new user (same email, temporary password, Auto Confirm User).
 3. Send them the link and the temporary password; they can change it from the menu at the top right.
 
