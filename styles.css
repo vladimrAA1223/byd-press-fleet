@@ -385,3 +385,32 @@ input[type=color]:disabled { cursor: default; }
 .q-search input { height: 40px; font-size: 14px; background: #F8FAFD; }
 .modal-head h3 { display: flex; align-items: center; gap: 8px; }
 .modal-head h3 svg { width: 18px; height: 18px; flex: none; }
+
+/* ================= date range picker (vola-style) ================= */
+.rp { border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px 10px; background: #fff; user-select: none; }
+.rp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.rp-hint { font-size: 12px; color: var(--muted); text-align: center; }
+.rp-months { display: grid; grid-template-columns: repeat(var(--m), 1fr); gap: 18px; }
+.rp-title { text-align: center; font-weight: 700; font-size: 13px; color: var(--navy); margin-bottom: 4px; }
+.rp-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.rp-wd { font-size: 10.5px; font-weight: 700; color: var(--muted); text-align: center; padding: 2px 0 4px; text-transform: uppercase; }
+.rp-d { height: 34px; border: 0; background: none; font-size: 13px; cursor: pointer; padding: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-d:hover { background: var(--blue-50); border-radius: 6px; }
+.rp-d.we { color: #6B7280; }
+.rp-d.today { font-weight: 800; box-shadow: inset 0 -2px 0 #FFC000; }
+.rp-d.busy { background: repeating-linear-gradient(135deg, #FDECEC 0 4px, #fff 4px 8px); color: #A61B1B; }
+.rp-d.in { background: #DCE8F8; border-radius: 0; }
+.rp-d.in.busy { background: #F5B5B5; color: #7F1414; }
+.rp-d.s, .rp-d.e { background: var(--blue); color: #fff; font-weight: 700; }
+.rp-d.s { border-radius: 6px 0 0 6px; }
+.rp-d.e { border-radius: 0 6px 6px 0; }
+.rp-d.s.e { border-radius: 6px; }
+.rp-d.s.busy, .rp-d.e.busy { background: #C0392B; }
+.rp-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; flex-wrap: wrap; }
+.rp-warn { color: var(--red); font-weight: 700; font-size: 12px; }
+.rp-legend { color: var(--muted); font-size: 11.5px; display: inline-flex; align-items: center; gap: 6px; }
+.rp-legend i { width: 14px; height: 12px; display: inline-block; border-radius: 2px; background: repeating-linear-gradient(135deg, #FDECEC 0 3px, #fff 3px 6px); border: 1px solid #F5C2C2; }
+.ba-save { margin-top: 8px; padding: 8px 10px; background: var(--blue-50); border-radius: 6px; font-size: 13px; }
+.date-field { height: 38px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; text-align: left; padding: 0 10px; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+.date-field small { font-weight: 500; color: var(--muted); }
+.date-field:hover { border-color: var(--blue); }

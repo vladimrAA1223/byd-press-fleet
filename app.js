@@ -980,6 +980,68 @@ function renderSettings() {
   });
 }
 
+// ------------------------------------------------------------------ date range picker (two months; click start, then return day)
+const addMonths = (first, n) => { const d = parse(first); d.setUTCMonth(d.getUTCMonth() + n); return toISO(d).slice(0, 8) + '01'; };
+// opts: start, end, onChange(start, end), busy(day) -> label of a clashing booking or null
+function rangePicker(host, opts) {
+  let s = opts.start || null, e = opts.end || null, hover = null, pickingEnd = false;
+  let view = (s || todayISO()).slice(0, 8) + '01';
+  const months = () => (host.clientWidth && host.clientWidth < 520 ? 1 : 2);
+  const busy = d => (opts.busy ? opts.busy(d) : null);
+  function month(first) {
+    const y = +first.slice(0, 4), m = +first.slice(5, 7);
+    const dim = new Date(Date.UTC(y, m, 0)).getUTCDate(), lead = (dow(first) + 6) % 7, today = todayISO();
+    const to = e || (pickingEnd ? hover : null);
+    let cells = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(w => `<span class="rp-wd">${w}</span>`).join('') + '<span></span>'.repeat(lead);
+    for (let i = 1; i <= dim; i++) {
+      const d = `${first.slice(0, 8)}${pad(i)}`, b = busy(d);
+      const cls = ['rp-d', dow(d) % 6 === 0 ? 'we' : '', d === today ? 'today' : '', b ? 'busy' : '',
+        s && d === s ? 's' : '', s && to && d === to && to >= s ? 'e' : '', s && to && d > s && d < to ? 'in' : ''].filter(Boolean).join(' ');
+      cells += `<button type="button" class="${cls}" data-rp-d="${d}"${b ? ` title="Booked: ${esc(b)}"` : ''}>${i}</button>`;
+    }
+    return `<div><div class="rp-title">${MONTHS[m - 1]} ${y}</div><div class="rp-grid">${cells}</div></div>`;
+  }
+  function render() {
+    const n = months();
+    const to = e || (pickingEnd ? hover : null);
+    const clash = s && to && to >= s && Array.from({ length: daysBetween(s, to) + 1 }, (_, i) => busy(addDays(s, i))).find(Boolean);
+    host.innerHTML = `
+      <div class="rp-top"><button type="button" class="icon-btn sm" data-rp-nav="-1" title="Previous month">${ICON.left}</button>
+        <span class="rp-hint">${pickingEnd ? 'Now click the <b>return day</b>' : 'Click the <b>start day</b>, then the <b>return day</b>'}</span>
+        <button type="button" class="icon-btn sm" data-rp-nav="1" title="Next month">${ICON.right}</button></div>
+      <div class="rp-months" style="--m:${n}">${Array.from({ length: n }, (_, i) => month(addMonths(view, i))).join('')}</div>
+      <div class="rp-foot">${s ? `<span><b>${fmtLong(s)}</b> → <b>${to && to >= s ? fmtLong(to) : '…'}</b>${to && to >= s ? ` · ${plural(daysBetween(s, to) + 1, 'day')}` : ''}</span>` : '<span></span>'}
+        ${clash ? `<span class="rp-warn">overlaps ${esc(clash)}</span>` : opts.busy ? '<span class="rp-legend"><i></i>car already booked</span>' : ''}</div>`;
+  }
+  host.classList.add('rp');
+  host.addEventListener('click', ev => {
+    const nav = ev.target.closest('[data-rp-nav]');
+    if (nav) { view = addMonths(view, +nav.dataset.rpNav); return render(); }
+    const cell = ev.target.closest('[data-rp-d]');
+    if (!cell) return;
+    const d = cell.dataset.rpD;
+    if (!pickingEnd) { s = d; e = null; hover = d; pickingEnd = true; render(); return; }
+    if (d < s) { s = d; hover = d; render(); return; }
+    e = d; pickingEnd = false; hover = null; render();
+    opts.onChange(s, e);
+  });
+  host.addEventListener('mouseover', ev => {
+    if (!pickingEnd) return;
+    const cell = ev.target.closest('[data-rp-d]');
+    if (cell && cell.dataset.rpD !== hover) { hover = cell.dataset.rpD; render(); }
+  });
+  render();
+  return {
+    set(ns, ne) {
+      s = ns; e = ne; pickingEnd = false; hover = null;
+      const lastShown = addMonths(view, months() - 1);
+      if (s && (s < view || s > addDays(addMonths(lastShown, 1), -1))) view = s.slice(0, 8) + '01';
+      render();
+    },
+    refresh: render,
+  };
+}
+
 // ------------------------------------------------------------------ modal
 function openModal(html, size = '') {
   $('#modal-root').innerHTML = `<div class="modal-back" data-action="modal-backdrop"><div class="modal ${size}" role="dialog" aria-modal="true">${html}</div></div>`;
@@ -1011,9 +1073,10 @@ function openQuickReserve() {
       <div class="q-grid">
         <label class="field"><span>Model</span><select id="q-model">${modelOptions(Q.model)}</select></label>
         <div class="field"><span>Days</span><div class="stepper"><button type="button" data-q="-1" aria-label="Fewer days">−</button><input id="q-days" type="number" min="1" max="365" value="${Q.days}" inputmode="numeric"><button type="button" data-q="1" aria-label="More days">+</button></div></div>
-        <label class="field"><span>From</span><input id="q-start" type="date" value="${Q.start}"></label>
+        <div class="field"><span>Dates</span><button type="button" class="date-field" id="q-dates"></button></div>
       </div>
       <div class="quick">${[1, 2, 3, 5, 7, 10, 14].map(d => `<button type="button" class="chip-btn${d === Q.days ? ' on' : ''}" data-qd="${d}">${plural(d, 'day')}</button>`).join('')}</div>
+      <div id="q-rp" hidden style="margin-top:10px"></div>
       <div class="q-grid two" style="margin-top:12px">
         <label class="field req"><span>Driver / client</span><input id="q-client" type="text" value="${esc(Q.client)}" placeholder="Type the name, then press Reserve on a car" maxlength="200"></label>
         <label class="field"><span>Type</span><select id="q-purpose">${typeOptions(Q.purpose)}</select></label>
@@ -1026,9 +1089,17 @@ function openQuickReserve() {
       <button type="button" class="btn sm" data-action="q-export-all">${ICON.xls}Excel (all models)</button>
       <button type="button" class="btn" data-action="close-modal">Close</button>
     </div>`, 'wide');
+  // the Dates field opens a two-month calendar: start day, then return day
+  const rp = rangePicker($('#q-rp'), {
+    start: Q.start, end: addDays(Q.start, Q.days - 1),
+    onChange: (s, e) => { Q.start = s; Q.days = daysBetween(s, e) + 1; $('#q-days').value = Q.days; $('#q-rp').hidden = true; draw(); },
+  });
+  $('#q-dates').addEventListener('click', () => { const h = $('#q-rp'); h.hidden = !h.hidden; if (!h.hidden) rp.set(Q.start, addDays(Q.start, Q.days - 1)); });
   const draw = () => {
     store.set('quick3', { model: Q.model, days: Q.days, purpose: Q.purpose });
     $$('#modal-root [data-qd]').forEach(b => b.classList.toggle('on', +b.dataset.qd === Q.days));
+    $('#q-dates').innerHTML = `${fmtShort(Q.start)} → ${fmtShort(addDays(Q.start, Q.days - 1))}<small>${DOW[dow(Q.start)]} – ${DOW[dow(addDays(Q.start, Q.days - 1))]}</small>`;
+    if (!$('#q-rp').hidden) rp.set(Q.start, addDays(Q.start, Q.days - 1));
     const { res, extra, q } = quickResults();
     const row = (r, other) => {
       const oldPlate = q && !(r.car.plate || '').toLowerCase().includes(q) && platesOf(r.car.id).find(p => p.plate.toLowerCase().includes(q) && p.plate !== r.car.plate);
@@ -1052,7 +1123,6 @@ function openQuickReserve() {
   $('#q-q').addEventListener('input', debounce(e => { Q.q = e.target.value; draw(); }, 120));
   $('#q-model').addEventListener('change', e => { Q.model = e.target.value; draw(); });
   $('#q-days').addEventListener('input', e => { const n = parseInt(e.target.value, 10); if (n >= 1 && n <= 365) { Q.days = n; draw(); } });
-  $('#q-start').addEventListener('change', e => { if (isISO(e.target.value)) { Q.start = e.target.value; draw(); } });
   $('#q-client').addEventListener('input', e => { Q.client = e.target.value; e.target.classList.remove('invalid'); });
   $('#q-purpose').addEventListener('change', e => { Q.purpose = e.target.value; });
   $('#modal-root .modal').addEventListener('click', e => {
@@ -1112,16 +1182,12 @@ function openBookingActions(id) {
         ${next ? `<div class="small muted">Next on this car: ${esc(next.client)} from ${fmt(next.start_date)}</div>` : ''}
       </div>
       ${live ? `
-      <div class="act-group"><div class="act-label">Return date</div>
-        <div class="row">
-          <button class="btn sm" data-action="bk-shift-end" data-id="${b.id}" data-n="-1" ${nDays(b) > 1 ? '' : 'disabled'}>− 1 day</button>
+      <div class="act-group"><div class="act-label">Change dates</div>
+        <div id="ba-rp"></div>
+        <div class="row ba-save" id="ba-save" hidden><span id="ba-new"></span><span class="spacer"></span>
+          <button type="button" class="btn sm" id="ba-undo">Undo</button><button type="button" class="btn sm primary" id="ba-apply">Save new dates</button></div></div>
+      <div class="act-group"><div class="row">
           <button class="btn sm" data-action="bk-shift-end" data-id="${b.id}" data-n="1" ${canExtend(1) ? '' : 'disabled title="The car is booked the next day"'}>+ 1 day</button>
-          <button class="btn sm" data-action="bk-shift-end" data-id="${b.id}" data-n="7" ${canExtend(7) ? '' : 'disabled title="The car is booked within the next week"'}>+ 1 week</button>
-        </div></div>
-      <div class="act-group"><div class="act-label">Whole booking</div>
-        <div class="row">
-          <button class="btn sm" data-action="bk-shift-all" data-id="${b.id}" data-n="-1">◀ 1 day earlier</button>
-          <button class="btn sm" data-action="bk-shift-all" data-id="${b.id}" data-n="1">1 day later ▶</button>
           <button class="btn sm primary" data-action="swap-open" data-id="${b.id}">${ICON.swap}Swap / change car</button>
         </div></div>` : '<div class="alert amber" style="margin-top:12px">This booking is cancelled.</div>'}
       <div class="history"><h4>History</h4><ul id="ba-history"><li class="muted">Loading…</li></ul></div>
@@ -1130,8 +1196,25 @@ function openBookingActions(id) {
       ${live ? `<button class="btn danger left" data-action="bk-cancel" data-id="${b.id}">Cancel booking</button>` : `<button class="btn left" data-action="bk-restore" data-id="${b.id}">Restore booking</button>`}
       <button class="btn" data-action="edit-booking" data-id="${b.id}">Edit details</button>
       <button class="btn" data-action="close-modal">Close</button>
-    </div>`, 'sm');
+    </div>`);
   loadHistoryInto('#ba-history', { table: 'bookings', rowId: b.id }, b.booked_by === 'Imported' ? 'Imported from the Excel calendar, not changed since.' : 'No changes recorded.');
+  if (!live) return;
+  let pick = null;
+  const rp = rangePicker($('#ba-rp'), {
+    start: b.start_date, end: b.end_date,
+    busy: d => { const x = conflicts(b.car_id, d, d, b.id)[0]; return x ? x.client : null; },
+    onChange: (s, e) => {
+      pick = (s === b.start_date && e === b.end_date) ? null : { start_date: s, end_date: e };
+      $('#ba-save').hidden = !pick;
+      if (pick) {
+        const clash = conflicts(b.car_id, s, e, b.id)[0];
+        $('#ba-new').innerHTML = `<b>${fmtShort(s)} – ${fmt(e)}</b> · ${plural(daysBetween(s, e) + 1, 'day')}${clash ? ` <span class="rp-warn">overlaps ${esc(clash.client)}</span>` : ''}`;
+        $('#ba-apply').disabled = !!clash;
+      }
+    },
+  });
+  $('#ba-undo').addEventListener('click', () => { pick = null; $('#ba-save').hidden = true; rp.set(b.start_date, b.end_date); });
+  $('#ba-apply').addEventListener('click', () => { if (pick) changeBooking(b, pick, `New dates: ${fmt(pick.start_date)} – ${fmt(pick.end_date)}`); });
 }
 
 async function changeBooking(b, patch, msg) {
@@ -1222,6 +1305,7 @@ function openBooking(pref = {}) {
       <div class="form-grid">
         <label class="field req full"><span>Car</span><select id="bk-car"><option value="">Choose a car…</option>${groups}</select></label>
         <label class="field req full"><span>Driver / client</span><input type="text" id="bk-client" value="${esc(b.client)}" placeholder="e.g. Andrei Pana - Autocritica" maxlength="200"></label>
+        <div class="field full"><span>Dates</span><div id="bk-rp"></div></div>
         <label class="field req"><span>Start date</span><input type="date" id="bk-start" value="${b.start_date}"></label>
         <label class="field req"><span>End date (car comes back)</span><input type="date" id="bk-end" value="${b.end_date}"></label>
         <div class="field full"><span>Number of days</span>
@@ -1279,23 +1363,31 @@ function openBooking(pref = {}) {
     el('bk-checks').innerHTML = out.join('');
     return { blocking, v };
   }
-  const setDays = n => { const s = el('bk-start').value; if (isISO(s) && n >= 1) { el('bk-end').value = addDays(s, n - 1); el('bk-days').value = n; } check(); };
+  // the calendar and the date fields stay in step whichever one is used
+  const rp = rangePicker(el('bk-rp'), {
+    start: b.start_date, end: b.end_date,
+    busy: d => { const car = el('bk-car').value, x = car && conflicts(car, d, d, existing ? existing.id : undefined)[0]; return x ? x.client : null; },
+    onChange: (s, e) => { el('bk-start').value = s; el('bk-end').value = e; el('bk-days').value = daysBetween(s, e) + 1; check(); },
+  });
+  const syncPicker = () => { const s = el('bk-start').value, e = el('bk-end').value; if (isISO(s) && isISO(e) && e >= s) rp.set(s, e); };
+  const setDays = n => { const s = el('bk-start').value; if (isISO(s) && n >= 1) { el('bk-end').value = addDays(s, n - 1); el('bk-days').value = n; } syncPicker(); check(); };
 
   el('bk-start').addEventListener('change', () => setDays(parseInt(el('bk-days').value, 10) || 1));
   el('bk-end').addEventListener('change', () => {
     const s = el('bk-start').value, e = el('bk-end').value;
     if (isISO(s) && isISO(e) && e >= s) el('bk-days').value = daysBetween(s, e) + 1;
-    check();
+    syncPicker(); check();
   });
   el('bk-days').addEventListener('input', () => { const n = parseInt(el('bk-days').value, 10); if (n >= 1) setDays(n); });
+  el('bk-car').addEventListener('change', () => rp.refresh());
   ['bk-car', 'bk-status', 'bk-purpose'].forEach(id => el(id).addEventListener('change', check));
   $('#bk-form').addEventListener('click', e => {
     const chip = e.target.closest('[data-bkd]');
     if (chip) return setDays(+chip.dataset.bkd);
     const a = e.target.closest('[data-bk]');
     if (!a) return;
-    if (a.dataset.bk === 'move') { el('bk-start').value = a.dataset.from; el('bk-end').value = addDays(a.dataset.from, +a.dataset.n - 1); check(); }
-    if (a.dataset.bk === 'switch') { el('bk-car').value = a.dataset.car; check(); }
+    if (a.dataset.bk === 'move') { el('bk-start').value = a.dataset.from; el('bk-end').value = addDays(a.dataset.from, +a.dataset.n - 1); syncPicker(); check(); }
+    if (a.dataset.bk === 'switch') { el('bk-car').value = a.dataset.car; rp.refresh(); check(); }
   });
   $('#bk-form').addEventListener('submit', async e => {
     e.preventDefault();
