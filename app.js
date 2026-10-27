@@ -157,12 +157,25 @@ function earliestFree(carId, from, n, ...ignore) {
 
 const poolCars = model => S.cars.filter(c => isBookable(c) && (model === 'All' || c.model === model));
 
+function resultFor(car, n, start) {
+  const from = earliestFree(car.id, start, n);
+  const next = nextBookingAfter(car.id, from);
+  return { car, from, to: addDays(from, n - 1), freeUntil: next ? addDays(next.start_date, -1) : null, now: currentBooking(car.id) };
+}
+const byEarliest = (a, b) => a.from.localeCompare(b.from) || label(a.car).localeCompare(label(b.car));
+
 function findResults(model, n, start) {
-  return poolCars(model).map(car => {
-    const from = earliestFree(car.id, start, n);
-    const next = nextBookingAfter(car.id, from);
-    return { car, from, to: addDays(from, n - 1), freeUntil: next ? addDays(next.start_date, -1) : null, now: currentBooking(car.id) };
-  }).sort((a, b) => a.from.localeCompare(b.from) || label(a.car).localeCompare(label(b.car)));
+  return poolCars(model).map(car => resultFor(car, n, start)).sort(byEarliest);
+}
+
+// Quick reserve with its search box: bookable matches first; a search can also reach
+// cars that are not normally reserved (company cars etc.), listed separately
+function quickResults() {
+  const Q = S.quick, q = (Q.q || '').trim().toLowerCase();
+  const res = findResults(Q.model, Q.days, Q.start).filter(r => matchCar(r.car, q));
+  const extra = !q ? [] : S.cars.filter(c => !isBookable(c) && (Q.model === 'All' || c.model === Q.model) && matchCar(c, q))
+    .map(c => resultFor(c, Q.days, Q.start)).sort(byEarliest);
+  return { res, extra, q };
 }
 
 function modelOverview(n, start) {
@@ -994,6 +1007,7 @@ function openQuickReserve() {
   if (!Q.start) Q.start = todayISO();
   openModal(`${modalHead(`${ICON.bolt} Quick reserve`)}
     <div class="modal-body">
+      <label class="field q-search"><span>Search car</span><input id="q-q" type="search" value="${esc(Q.q || '')}" placeholder="Plate, old plate, VIN, colour, trim, description…" autocomplete="off"></label>
       <div class="q-grid">
         <label class="field"><span>Model</span><select id="q-model">${modelOptions(Q.model)}</select></label>
         <div class="field"><span>Days</span><div class="stepper"><button type="button" data-q="-1" aria-label="Fewer days">−</button><input id="q-days" type="number" min="1" max="365" value="${Q.days}" inputmode="numeric"><button type="button" data-q="1" aria-label="More days">+</button></div></div>
@@ -1015,19 +1029,27 @@ function openQuickReserve() {
   const draw = () => {
     store.set('quick3', { model: Q.model, days: Q.days, purpose: Q.purpose });
     $$('#modal-root [data-qd]').forEach(b => b.classList.toggle('on', +b.dataset.qd === Q.days));
-    const res = findResults(Q.model, Q.days, Q.start);
-    $('#q-results').innerHTML = res.length ? `
-      <div class="q-head">${esc(Q.model === 'All' ? 'All models' : Q.model)} · ${plural(Q.days, 'day')} from ${fmtLong(Q.start)} · earliest first</div>
-      <div class="table-wrap"><table><tbody>${res.map(r => `
+    const { res, extra, q } = quickResults();
+    const row = (r, other) => {
+      const oldPlate = q && !(r.car.plate || '').toLowerCase().includes(q) && platesOf(r.car.id).find(p => p.plate.toLowerCase().includes(q) && p.plate !== r.car.plate);
+      return `
         <tr>
-          <td><div class="car-id">${esc(label(r.car))}</div><div class="car-sub">${esc(r.car.model)} · ${esc(r.car.colour || '')}</div>${r.car.description ? `<div class="car-desc">${esc(r.car.description)}</div>` : ''}</td>
+          <td><div class="car-id">${esc(label(r.car))}${other ? ` <span class="badge">${esc(r.car.category || '')}</span>` : ''}</div>
+            <div class="car-sub">${esc(r.car.model)} · ${esc(r.car.colour || '')} · <span class="mono">VIN …${esc(r.car.id.slice(-6))}</span></div>
+            ${oldPlate ? `<div class="car-sub">earlier plate <b>${esc(oldPlate.plate)}</b></div>` : ''}
+            ${r.car.description ? `<div class="car-desc">${esc(r.car.description)}</div>` : ''}</td>
           <td class="nowrap">${r.from === Q.start ? '<span class="badge green">free</span> ' : ''}<b>${fmtShort(r.from)} – ${fmt(r.to)}</b>
             <div class="car-sub">${r.from === Q.start ? 'right away' : `${plural(daysBetween(Q.start, r.from), 'day')} later`}${r.freeUntil ? ` · free until ${fmtShort(r.freeUntil)}` : ''}</div></td>
-          <td class="hide-sm small muted">${esc(whereText(r.car.id) || 'Available now')}</td>
-          <td style="text-align:right"><button type="button" class="btn sm primary" data-action="q-reserve" data-car="${esc(r.car.id)}" data-from="${r.from}">Reserve</button></td>
-        </tr>`).join('')}</tbody></table></div>`
-      : `<div class="empty">No ${esc(Q.model)} car is in a category that can be reserved (see Settings → Car categories).</div>`;
+          <td class="hide-sm small muted">${esc(whereText(r.car.id) || (other ? r.car.holder || '' : 'Available now'))}</td>
+          <td style="text-align:right"><button type="button" class="btn sm ${other ? '' : 'primary'}" data-action="q-reserve" data-car="${esc(r.car.id)}" data-from="${r.from}">Reserve</button></td>
+        </tr>`;
+    };
+    const what = `${esc(Q.model === 'All' ? 'All models' : Q.model)}${q ? ` · matching “${esc(Q.q.trim())}”` : ''} · ${plural(Q.days, 'day')} from ${fmtLong(Q.start)} · earliest first`;
+    $('#q-results').innerHTML = (res.length ? `<div class="q-head">${what}</div><div class="table-wrap"><table><tbody>${res.map(r => row(r, false)).join('')}</tbody></table></div>`
+      : `<div class="empty">${q ? `No car that can be reserved matches “${esc(Q.q.trim())}”${Q.model === 'All' ? '' : ' in ' + esc(Q.model)}.` : `No ${esc(Q.model)} car is in a category that can be reserved (see Settings → Car categories).`}</div>`)
+      + (extra.length ? `<div class="q-head">Other cars matching your search · not normally reserved</div><div class="table-wrap"><table><tbody>${extra.map(r => row(r, true)).join('')}</tbody></table></div>` : '');
   };
+  $('#q-q').addEventListener('input', debounce(e => { Q.q = e.target.value; draw(); }, 120));
   $('#q-model').addEventListener('change', e => { Q.model = e.target.value; draw(); });
   $('#q-days').addEventListener('input', e => { const n = parseInt(e.target.value, 10); if (n >= 1 && n <= 365) { Q.days = n; draw(); } });
   $('#q-start').addEventListener('change', e => { if (isISO(e.target.value)) { Q.start = e.target.value; draw(); } });
@@ -1039,7 +1061,7 @@ function openQuickReserve() {
     if (chip) { Q.days = +chip.dataset.qd; $('#q-days').value = Q.days; draw(); }
   });
   draw();
-  if (fine()) $('#q-client').focus();
+  if (fine()) $('#q-q').focus();
 }
 
 async function quickReserve(carId, from) {
@@ -1048,6 +1070,8 @@ async function quickReserve(carId, from) {
   if (!client) { $('#q-client').classList.add('invalid'); $('#q-client').focus(); return toast('Type the driver / client name first.', true); }
   const b = { car_id: carId, start_date: from, end_date: addDays(from, Q.days - 1), client, purpose: Q.purpose, status: 'Confirmed', booked_by: myName(), notes: null };
   if (conflicts(carId, b.start_date, b.end_date).length) return toast('Someone just booked that car. The list is refreshed.', true);
+  const car = S.carMap.get(carId);
+  if (car && !isBookable(car) && !confirm(`${label(car)} is in the category "${car.category}"${car.holder ? ` (${car.holder})` : ''}, which is not normally reserved. Reserve it anyway?`)) return;
   $$('#modal-root [data-action="q-reserve"]').forEach(x => { x.disabled = true; });
   const ok = await mutate(() => api.saveBooking(b), `Reserved ${plateOf(carId)} for ${client}: ${fmt(b.start_date)} – ${fmt(b.end_date)}`);
   if (ok) {
@@ -1461,7 +1485,7 @@ async function exportXlsx(filename, sheets) {
   } catch (e) { toast(friendlyError(e), true); }
 }
 const stamp = () => todayISO().replace(/-/g, '');
-const findRows = (model, n, start) => findResults(model, n, start).map(r => ({
+const findRows = (model, n, start, list) => (list || findResults(model, n, start)).map(r => ({
   Plate: label(r.car), Model: r.car.model, Colour: r.car.colour || '', Trim: r.car.trim_level || '', Description: r.car.description || '',
   'Free from': fmt(r.from), 'Return by': fmt(r.to), 'Free until': r.freeUntil ? fmt(r.freeUntil) : 'no later booking', Today: whereText(r.car.id) || 'Available',
 }));
@@ -1502,7 +1526,8 @@ async function copyText(text) {
 }
 function quickText() {
   const Q = S.quick;
-  const res = findResults(Q.model, Q.days, Q.start).slice(0, 10);
+  const { res: found, extra } = quickResults();
+  const res = [...found, ...extra].slice(0, 10);
   const head = `Availability - ${Q.model === 'All' ? 'all models' : Q.model} - ${plural(Q.days, 'day')} from ${fmt(Q.start)}:`;
   return [head, ...res.map(r => `• ${label(r.car)} (${r.car.model}${r.car.colour ? ', ' + r.car.colour : ''}): ${fmt(r.from)} - ${fmt(r.to)}`)].join('\n');
 }
@@ -1525,7 +1550,7 @@ const actions = {
   'quick-reserve'() { openQuickReserve(); },
   'q-reserve'(el) { quickReserve(el.dataset.car, el.dataset.from); },
   'q-copy'() { copyText(quickText()); },
-  'q-export'() { const Q = S.quick; exportXlsx(`Availability_${(Q.model === 'All' ? 'All_models' : Q.model).replace(/\W+/g, '_')}_${Q.days}d_${stamp()}.xlsx`, [{ name: 'Availability', rows: findRows(Q.model, Q.days, Q.start) }]); },
+  'q-export'() { const Q = S.quick; exportXlsx(`Availability_${(Q.model === 'All' ? 'All_models' : Q.model).replace(/\W+/g, '_')}_${Q.days}d_${stamp()}.xlsx`, [{ name: 'Availability', rows: findRows(Q.model, Q.days, Q.start, (({ res, extra }) => [...res, ...extra])(quickResults())) }]); },
   'q-export-all'() {
     const Q = S.quick;
     const ov = modelOverview(Q.days, Q.start).map(o => ({ Model: o.model, 'Can be reserved': o.pool, 'Free today': o.freeToday, 'Earliest start': o.earliest ? fmt(o.earliest) : 'no car', 'Return by': o.to ? fmt(o.to) : '', 'Best car': o.bestCar || '', 'Other cars free then': o.earliest ? o.others : '' }));

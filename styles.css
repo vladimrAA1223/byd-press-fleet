@@ -380,3 +380,8 @@ input[type=color]:disabled { cursor: default; }
 @media (max-width: 640px) {
   .history li { grid-template-columns: 1fr; gap: 0; }
 }
+
+.q-search { margin-bottom: 12px; }
+.q-search input { height: 40px; font-size: 14px; background: #F8FAFD; }
+.modal-head h3 { display: flex; align-items: center; gap: 8px; }
+.modal-head h3 svg { width: 18px; height: 18px; flex: none; }
