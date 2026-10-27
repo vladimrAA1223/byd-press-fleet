@@ -8,7 +8,9 @@ Web app for the PR press-car pool, laid out like the original Excel calendar.
   - **Swap cars**: give a booking another car; if that car is busy with one booking that fits on the first car, the two bookings swap cars in one step.
   - **List** view with filters and Excel export; the timeline also exports as an Excel grid.
 - **Quick reserve** (yellow button, always visible): model + number of days + client name → every free car, earliest first, one click to reserve. Copy text for WeCom chat, Excel per model or for all models.
-- **Cars**: fleet list, team access, models. Each car's window has **Change plate** and **Swap plates with another car**.
+- **Cars**: every car with category, plate, VIN, description and where it is today. Add cars here or from the calendar. Each car's window has a **description** box, **Change plate**, **Swap plates** and the car's history.
+- **History**: every change (bookings, cars, plates, team, settings) with who, when and old → new values. Append-only: nobody can edit or delete it.
+- **Settings**: team (admins add people with a temporary password, reset passwords), your own **car categories** (calendar sections, which ones can be reserved), **booking types** with colours, models.
 
 ## Data rules
 
@@ -18,9 +20,7 @@ Web app for the PR press-car pool, laid out like the original Excel calendar.
 
 ## Adding a colleague
 
-1. Cars page → Team access: add their email.
-2. Supabase dashboard → Authentication → Users → Add user → Create new user (same email, temporary password, Auto Confirm User).
-3. Send them the link and the temporary password; they can change it from the menu at the top right.
+Settings → Team → name, email, role and a temporary password → **Add person**. Send them the link and the password; they can change it from the menu at the top right. (The login is created by the `manage-members` Supabase Edge Function, which only admins can call.)
 
 ## Local preview
 
