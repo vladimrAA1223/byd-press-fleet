@@ -15,6 +15,7 @@ const ICON = {
   car: '<svg viewBox="0 0 24 24" fill="#1F3864"><path d="M3 15l2.2-5.4A2.5 2.5 0 0 1 7.5 8h9a2.5 2.5 0 0 1 2.3 1.6L21 15v3.5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1V18h-11v.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>',
   bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
   swap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L3 8l4 4"/><path d="M3 8h14"/><path d="M17 20l4-4-4-4"/><path d="M21 16H7"/></svg>',
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   xls: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>',
@@ -524,41 +525,36 @@ function renderView() {
 function renderCalendar() {
   const c = S.cal;
   if (!c.start) c.start = addDays(mondayOf(todayISO()), -7);
-  const today = todayISO();
-  const pool = poolCars('All');
-  const out = pool.filter(x => currentBooking(x.id, today)).length;
   $('#view').innerHTML = `
   <div class="sheet">
     <div class="sheet-bar">
-      <div class="seg" role="group">
-        <button class="seg-btn${c.mode === 'timeline' ? ' on' : ''}" data-action="cal-mode" data-mode="timeline">Timeline</button>
-        <button class="seg-btn${c.mode === 'list' ? ' on' : ''}" data-action="cal-mode" data-mode="list">List</button>
-      </div>
       ${c.mode === 'timeline' ? `
-      <button class="icon-btn" data-action="cal-move" data-d="-7" title="Previous week">${ICON.left}</button>
-      <button class="btn sm" data-action="cal-today">Today</button>
-      <button class="icon-btn" data-action="cal-move" data-d="7" title="Next week">${ICON.right}</button>
-      <input type="date" id="c-jump" value="${c.start}" title="Jump to date" class="w-auto">
-      <select id="c-weeks" class="w-auto">${[2, 4, 6, 8, 12, 26].map(w => `<option value="${w}"${w === c.weeks ? ' selected' : ''}>${w} weeks</option>`).join('')}</select>` : `
+      <div class="nav-grp">
+        <button class="icon-btn" data-action="cal-move" data-d="-7" title="Previous week">${ICON.left}</button>
+        <button class="btn sm" data-action="cal-today">Today</button>
+        <button class="icon-btn" data-action="cal-move" data-d="7" title="Next week">${ICON.right}</button>
+        <span class="cal-title" id="c-title"></span>
+      </div>` : `
       <select id="l-period" class="w-auto">${[['current', 'Current & upcoming'], ['past', 'Past'], ['all', 'All dates']].map(([v, t]) => `<option value="${v}"${S.list.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <select id="l-purpose" class="w-auto"><option value="All">All types</option>${typeOptions(S.list.purpose)}</select>
       <label class="check"><input type="checkbox" id="l-cancelled" ${S.list.cancelled ? 'checked' : ''}> Cancelled</label>`}
       <select id="c-model" class="w-auto">${modelOptions(c.model)}</select>
-      <input type="search" id="c-q" placeholder="Search car, plate, client…" value="${esc(c.q)}" class="w-search">
+      <input type="search" id="c-q" placeholder="Find car, plate or client…" value="${esc(c.q)}" class="w-search">
       <span class="spacer"></span>
-      <span class="summary"><b class="green-t">${pool.length - out}</b> of ${pool.length} bookable cars free today</span>
-      <button class="btn sm" data-action="swap-pick">${ICON.swap}Swap cars</button>
-      <button class="btn sm" data-action="new-car">${ICON.plus}Add car</button>
-      <button class="btn sm primary only-narrow" data-action="quick-reserve">${ICON.bolt}Quick reserve</button>
-      <button class="btn sm" data-action="${c.mode === 'timeline' ? 'export-calendar' : 'export-bookings'}" title="Download Excel">${ICON.xls}Excel</button>
+      <div class="seg" role="group">
+        <button class="seg-btn${c.mode === 'timeline' ? ' on' : ''}" data-action="cal-mode" data-mode="timeline">Calendar</button>
+        <button class="seg-btn${c.mode === 'list' ? ' on' : ''}" data-action="cal-mode" data-mode="list">List</button>
+      </div>
+      <button class="btn sm" data-action="cal-more" aria-haspopup="menu">More ▾</button>
     </div>
+    <div id="today-strip" class="today-strip"></div>
     <div id="cal-body"></div>
   </div>`;
   $('#c-model').addEventListener('change', e => { c.model = e.target.value; saveCal(); renderCalBody(); });
   $('#c-q').addEventListener('input', debounce(e => { c.q = e.target.value; renderCalBody(); }, 150));
+  renderTodayStrip();
   if (c.mode === 'timeline') {
-    $('#c-weeks').addEventListener('change', e => { c.weeks = +e.target.value; saveCal(); renderCalBody(); });
-    $('#c-jump').addEventListener('change', e => { if (isISO(e.target.value)) { c.start = mondayOf(e.target.value); renderCalBody(); } });
+    /* period and jump-to-date live in the More menu */
   } else {
     const saveList = () => { store.set('list3', S.list); renderCalBody(); };
     $('#l-period').addEventListener('change', e => { S.list.period = e.target.value; saveList(); });
@@ -571,6 +567,53 @@ function renderCalendar() {
 function renderCalBody() {
   if (S.cal.mode === 'list') return renderList();
   renderTimeline();
+}
+
+// one line that answers the daily questions: how many cars are free, who goes out, who comes back
+function legendGroups() {
+  const used = S.types.filter(t => S.bookings.some(b => b.purpose === t.name && b.status !== 'Cancelled'));
+  const byColour = new Map();
+  for (const t of used) { const k = (t.colour || '').toUpperCase(); if (!byColour.has(k)) byColour.set(k, []); byColour.get(k).push(t.name); }
+  return [...byColour].map(([col, names]) => `<span class="lg" title="${esc(names.join(', '))}"><i style="background:${esc(col)}"></i>${esc(names.length > 2 ? 'Booked (' + names.join(', ') + ')' : names.join(' / '))}</span>`).join('')
+    + '<span class="lg"><i class="tentative" style="background-color:#FFFF00"></i>Tentative</span>';
+}
+function renderTodayStrip() {
+  const el = $('#today-strip');
+  if (!el) return;
+  const today = todayISO();
+  const pool = poolCars('All');
+  const free = pool.filter(x => !currentBooking(x.id, today));
+  const live = S.bookings.filter(b => b.status !== 'Cancelled' && S.carMap.has(b.car_id));
+  const out = live.filter(b => b.start_date === today), back = live.filter(b => b.end_date === today && b.start_date !== today);
+  const chip = b => `<button class="ts-chip" data-action="booking-actions" data-id="${b.id}" title="${esc(b.client)} · ${dateRange(b)}"><b>${esc(plateOf(b.car_id))}</b>${esc(b.client)}</button>`;
+  const group = (title, list, fn) => list.length ? `<span class="ts-grp"><span class="ts-label">${title}</span>${list.slice(0, 4).map(fn).join('')}${list.length > 4 ? `<span class="muted small">+${list.length - 4}</span>` : ''}</span>` : '';
+  const freeChip = c => `<button class="ts-chip free" data-action="quick-car" data-id="${esc(c.id)}" title="Reserve ${esc(label(c))}"><b>${esc(label(c))}</b>${esc(c.model)}</button>`;
+  el.innerHTML = `<span class="ts-day">Today · ${fmtLong(today)}</span>
+    <span class="ts-free"><b class="${free.length ? 'green-t' : ''}">${free.length}</b> of ${pool.length} press cars free</span>
+    ${group('Free now', free, freeChip)}${group('Going out', out, chip)}${group('Coming back', back, chip)}
+    <span class="spacer"></span><span class="legend-in">${legendGroups()}</span>`;
+}
+
+function openCalMenu(btn) {
+  const c = S.cal;
+  const m = document.createElement('div');
+  m.className = 'menu cal-menu';
+  m.innerHTML = `
+    <button data-action="swap-pick">${ICON.swap}Swap cars between two bookings</button>
+    <button data-action="new-car">${ICON.plus}Add a car</button>
+    <button data-action="${c.mode === 'timeline' ? 'export-calendar' : 'export-bookings'}">${ICON.xls}Download Excel</button>
+    ${c.mode === 'timeline' ? `<div class="menu-sep"></div>
+    <div class="menu-row"><span>Show</span>${[2, 4, 6, 8, 12, 26].map(w => `<button type="button" class="chip-btn${w === c.weeks ? ' on' : ''}" data-action="cal-weeks" data-w="${w}">${w}w</button>`).join('')}</div>
+    <label class="menu-row"><span>Go to</span><input type="date" id="m-jump" value="${c.start}"></label>
+    <label class="menu-row check"><input type="checkbox" id="m-details" ${c.details ? 'checked' : ''}> “User / now” column</label>` : ''}`;
+  document.body.appendChild(m);
+  const r = btn.getBoundingClientRect();
+  m.style.top = `${r.bottom + window.scrollY + 6}px`;
+  m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, window.innerWidth - m.offsetWidth - 8))}px`;
+  m.style.right = 'auto';
+  const j = $('#m-jump'), d = $('#m-details');
+  if (j) j.addEventListener('change', e => { if (isISO(e.target.value)) { c.start = mondayOf(e.target.value); closeMenu(); renderTimeline(); } });
+  if (d) d.addEventListener('change', e => { c.details = e.target.checked; saveCal(); closeMenu(); renderTimeline(); });
 }
 
 // a car matches its model, colour, user, description, VIN, current plate or any plate it ever had
@@ -641,24 +684,19 @@ function renderTimeline() {
     }
   }
 
-  const usedTypes = S.types.filter(t => S.bookings.some(b => b.purpose === t.name && b.status !== 'Cancelled'));
+  if ($('#c-title')) $('#c-title').textContent = `${fmtShort(c.start)} – ${fmt(end)}`;
   $('#cal-body').innerHTML = `
-    <div class="legend">
-      ${usedTypes.map(t => `<span class="lg"><i style="background:${esc(t.colour)}"></i>${esc(t.name)}</span>`).join('')}
-      <span class="lg"><i class="tentative" style="background-color:#FFFF00"></i>Tentative</span>
-      <span class="muted">· Click or drag across empty days to reserve · click a block to extend, swap or edit</span>
-      <span class="spacer"></span>
-      <label class="check"><input type="checkbox" id="c-details" ${c.details ? 'checked' : ''}> User column</label>
-    </div>
     <div class="g-scroll"><div class="gantt${c.details ? '' : ' compact'}" style="--days:${days}">
       <div class="g-corner${c.details ? '' : ' compact'}"><div>Model · Colour<br><span>VIN · Plate</span></div>${c.details ? '<div>User / now</div>' : ''}</div>
       <div class="g-head">${head}</div>
       ${rows || '<div class="empty" style="grid-column:1/-1">No cars match.</div>'}
     </div></div>`;
-  $('#c-details').addEventListener('change', e => { c.details = e.target.checked; saveCal(); renderTimeline(); });
   const sc = $('.g-scroll');
   const ti = daysBetween(c.start, today);
-  if (sc && ti > 10 && ti < days) sc.scrollLeft = (ti - 7) * 30;
+  if (sc && ti > 0 && ti < days) {
+    const cell = $('.g-cell', sc), w = cell ? cell.offsetWidth : 34, narrow = sc.clientWidth < 700;
+    sc.scrollLeft = Math.max(0, (ti - (narrow ? 1 : 7)) * w);
+  }
 }
 
 // drag across empty days in one row to reserve exactly that range (a single click = start date)
@@ -1069,24 +1107,26 @@ function openQuickReserve() {
   if (!Q.start) Q.start = todayISO();
   openModal(`${modalHead(`${ICON.bolt} Quick reserve`)}
     <div class="modal-body">
-      <label class="field q-search"><span>Search car</span><input id="q-q" type="search" value="${esc(Q.q || '')}" placeholder="Plate, old plate, VIN, colour, trim, description…" autocomplete="off"></label>
+      <div class="q-step"><span class="q-n">1</span>Who is it for?</div>
+      <div class="q-grid two">
+        <label class="field req"><span>Driver / client</span><input id="q-client" type="text" value="${esc(Q.client)}" placeholder="e.g. Andrei Pana - Autocritica" maxlength="200" autocomplete="off"></label>
+        <label class="field"><span>Type</span><select id="q-purpose">${typeOptions(Q.purpose)}</select></label>
+      </div>
+      <div class="q-step"><span class="q-n">2</span>Which model, when and how long?</div>
       <div class="q-grid">
         <label class="field"><span>Model</span><select id="q-model">${modelOptions(Q.model)}</select></label>
-        <div class="field"><span>Days</span><div class="stepper"><button type="button" data-q="-1" aria-label="Fewer days">−</button><input id="q-days" type="number" min="1" max="365" value="${Q.days}" inputmode="numeric"><button type="button" data-q="1" aria-label="More days">+</button></div></div>
-        <div class="field"><span>Dates</span><button type="button" class="date-field" id="q-dates"></button></div>
+        <div class="field"><span>From → return</span><button type="button" class="date-field" id="q-dates"></button></div>
+        <label class="field"><span>Days</span><input id="q-days" type="number" min="1" max="365" value="${Q.days}" inputmode="numeric"></label>
       </div>
       <div class="quick">${[1, 2, 3, 5, 7, 10, 14].map(d => `<button type="button" class="chip-btn${d === Q.days ? ' on' : ''}" data-qd="${d}">${plural(d, 'day')}</button>`).join('')}</div>
       <div id="q-rp" hidden style="margin-top:10px"></div>
-      <div class="q-grid two" style="margin-top:12px">
-        <label class="field req"><span>Driver / client</span><input id="q-client" type="text" value="${esc(Q.client)}" placeholder="Type the name, then press Reserve on a car" maxlength="200"></label>
-        <label class="field"><span>Type</span><select id="q-purpose">${typeOptions(Q.purpose)}</select></label>
-      </div>
+      <div class="q-step"><span class="q-n">3</span>Press Reserve on a car <span class="muted small">(earliest free first)</span>
+        <input id="q-q" type="search" class="q-filter" value="${esc(Q.q || '')}" placeholder="Filter: plate, VIN, colour…" autocomplete="off"></div>
       <div id="q-results" class="q-results"></div>
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn sm left" data-action="q-copy">${ICON.copy}Copy text</button>
-      <button type="button" class="btn sm" data-action="q-export">${ICON.xls}Excel (this model)</button>
-      <button type="button" class="btn sm" data-action="q-export-all">${ICON.xls}Excel (all models)</button>
+      <button type="button" class="btn sm left" data-action="q-copy">${ICON.copy}Copy for WeCom</button>
+      <button type="button" class="btn sm" data-action="q-excel">${ICON.xls}Excel</button>
       <button type="button" class="btn" data-action="close-modal">Close</button>
     </div>`, 'wide');
   // the Dates field opens a two-month calendar: start day, then return day
@@ -1115,7 +1155,7 @@ function openQuickReserve() {
           <td style="text-align:right"><button type="button" class="btn sm ${other ? '' : 'primary'}" data-action="q-reserve" data-car="${esc(r.car.id)}" data-from="${r.from}">Reserve</button></td>
         </tr>`;
     };
-    const what = `${esc(Q.model === 'All' ? 'All models' : Q.model)}${q ? ` · matching “${esc(Q.q.trim())}”` : ''} · ${plural(Q.days, 'day')} from ${fmtLong(Q.start)} · earliest first`;
+    const what = `${esc(Q.model === 'All' ? 'All models' : Q.model)}${q ? ` · matching “${esc(Q.q.trim())}”` : ''} · ${plural(Q.days, 'day')} from ${fmtLong(Q.start)}`;
     $('#q-results').innerHTML = (res.length ? `<div class="q-head">${what}</div><div class="table-wrap"><table><tbody>${res.map(r => row(r, false)).join('')}</tbody></table></div>`
       : `<div class="empty">${q ? `No car that can be reserved matches “${esc(Q.q.trim())}”${Q.model === 'All' ? '' : ' in ' + esc(Q.model)}.` : `No ${esc(Q.model)} car is in a category that can be reserved (see Settings → Car categories).`}</div>`)
       + (extra.length ? `<div class="q-head">Other cars matching your search · not normally reserved</div><div class="table-wrap"><table><tbody>${extra.map(r => row(r, true)).join('')}</tbody></table></div>` : '');
@@ -1131,7 +1171,7 @@ function openQuickReserve() {
     if (chip) { Q.days = +chip.dataset.qd; $('#q-days').value = Q.days; draw(); }
   });
   draw();
-  if (fine()) $('#q-q').focus();
+  if (fine()) $('#q-client').focus();
 }
 
 async function quickReserve(carId, from) {
@@ -1165,36 +1205,64 @@ function flashCar(carId) {
 }
 
 // ------------------------------------------------------------------ BOOKING ACTIONS (click a block)
+// short e-mail about one booking, ready to paste; the recipient's name is filled in by hand
+const PICKUP = CFG.pickupPlace || 'Tiriac Auto, Bulevardul Expoziției, București';
+const ZI = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
+const dataRo = d => `${ZI[dow(d)]}, ${fmt(d)}`;
+function bookingText(b) {
+  const car = S.carMap.get(b.car_id) || {};
+  const carName = `BYD ${car.model || ''}${car.colour ? ', ' + car.colour : ''} – ${plateOf(b.car_id)}`;
+  return [
+    `Subject: Rezervare - ${b.car_id} / ${car.plate || 'fără număr'}`,
+    '',
+    'Bună ziua, [nume],',
+    '',
+    b.status === 'Tentative' ? 'Am pre-rezervat mașina de presă (urmează confirmarea):' : 'Vă confirmăm rezervarea mașinii de presă:',
+    `• Mașina: ${carName}`,
+    `• Ridicare: ${dataRo(b.start_date)}, ${PICKUP}`,
+    `• Predare: ${dataRo(b.end_date)}, în același loc`,
+    '',
+    'Cu stimă,',
+    myName(),
+  ].join('\n');
+}
+
 function openBookingActions(id) {
   const b = bookingById(id);
   if (!b) return;
   const car = S.carMap.get(b.car_id) || {};
   const live = b.status !== 'Cancelled';
-  const next = conflicts(b.car_id, addDays(b.end_date, 1), addDays(b.end_date, 7), b.id)[0];
-  const canExtend = n => !conflicts(b.car_id, addDays(b.end_date, 1), addDays(b.end_date, n), b.id).length;
+  const prev = bookingsOf(b.car_id).filter(x => x.id !== b.id && x.end_date < b.start_date).pop();
+  const next = bookingsOf(b.car_id).find(x => x.id !== b.id && x.start_date > b.end_date);
+  const canExtend = !conflicts(b.car_id, addDays(b.end_date, 1), addDays(b.end_date, 1), b.id).length;
+  const notes = b.notes && !/^Imported/.test(b.notes) ? b.notes : '';
   openModal(`${modalHead(esc(b.client))}
     <div class="modal-body">
-      <div class="act-info">
-        <div><span class="muted small">Car</span><b>${esc(plateOf(b.car_id))}</b> <span class="muted">${esc(car.model || '')} · ${esc(car.colour || '')}</span></div>
-        <div><span class="muted small">Dates</span><b>${fmtLong(b.start_date)} – ${fmtLong(b.end_date)}</b> <span class="muted">(${plural(nDays(b), 'day')})</span></div>
-        <div><span class="muted small">Type / status</span>${typeTag(b.purpose)} · ${statusBadge(b.status)}${b.booked_by ? ` <span class="muted small">· booked by ${esc(b.booked_by)}</span>` : ''}</div>
-        ${b.notes && !/^Imported/.test(b.notes) ? `<div><span class="muted small">Notes</span>${esc(b.notes)}</div>` : ''}
-        ${next ? `<div class="small muted">Next on this car: ${esc(next.client)} from ${fmt(next.start_date)}</div>` : ''}
+      <div class="bk-sum">
+        <div class="bk-car"><span class="plate-chip">${esc(plateOf(b.car_id))}</span> ${esc(car.model || '')} <span class="muted">${esc(car.colour || '')}</span></div>
+        <div class="bk-dates">${fmtLong(b.start_date)} → ${fmtLong(b.end_date)} <span class="muted">· ${plural(nDays(b), 'day')}</span></div>
+        <div class="bk-tags">${typeTag(b.purpose)} ${statusBadge(b.status)}${b.booked_by && b.booked_by !== 'Imported' ? ` <span class="muted small">booked by ${esc(b.booked_by)}</span>` : ''}</div>
+        ${notes ? `<div class="bk-notes">${esc(notes)}</div>` : ''}
+        ${live && (prev || next) ? `<div class="bk-around small muted">${prev ? `Before: ${esc(prev.client)} until ${fmtShort(prev.end_date)}` : ''}${prev && next ? ' · ' : ''}${next ? `After: ${esc(next.client)} from ${fmtShort(next.start_date)}` : ' · free after'}</div>` : ''}
       </div>
       ${live ? `
-      <div class="act-group"><div class="act-label">Change dates</div>
+      <div class="big-acts">
+        <button type="button" class="big-act" data-action="ba-dates">${ICON.cal}<b>Change dates</b><span>pick new start / return</span></button>
+        <button type="button" class="big-act" data-action="bk-shift-end" data-id="${b.id}" data-n="1" ${canExtend ? '' : `disabled title="${esc(next ? next.client : '')} has the car the next day"`}><b>+1 day</b><span>${canExtend ? 'return ' + fmtShort(addDays(b.end_date, 1)) : 'car busy next day'}</span></button>
+        <button type="button" class="big-act" data-action="swap-open" data-id="${b.id}">${ICON.swap}<b>Change car</b><span>move or swap</span></button>
+        <button type="button" class="big-act" data-action="edit-booking" data-id="${b.id}"><b>Edit</b><span>name, type, notes</span></button>
+      </div>
+      <div id="ba-dates" class="ba-dates" hidden>
         <div id="ba-rp"></div>
         <div class="row ba-save" id="ba-save" hidden><span id="ba-new"></span><span class="spacer"></span>
-          <button type="button" class="btn sm" id="ba-undo">Undo</button><button type="button" class="btn sm primary" id="ba-apply">Save new dates</button></div></div>
-      <div class="act-group"><div class="row">
-          <button class="btn sm" data-action="bk-shift-end" data-id="${b.id}" data-n="1" ${canExtend(1) ? '' : 'disabled title="The car is booked the next day"'}>+ 1 day</button>
-          <button class="btn sm primary" data-action="swap-open" data-id="${b.id}">${ICON.swap}Swap / change car</button>
-        </div></div>` : '<div class="alert amber" style="margin-top:12px">This booking is cancelled.</div>'}
-      <div class="history"><h4>History</h4><ul id="ba-history"><li class="muted">Loading…</li></ul></div>
+          <button type="button" class="btn sm" id="ba-undo">Undo</button><button type="button" class="btn sm primary" id="ba-apply">Save new dates</button></div>
+      </div>` : '<div class="alert amber" style="margin-top:12px">This booking is cancelled. The car is free on these days.</div>'}
+      <div id="mail-box" class="mail-box" hidden><div class="mail-head">E-mail copied · paste it, then write the name instead of [nume]</div><textarea id="mail-text" readonly></textarea></div>
+      <details class="history"><summary>History of this booking</summary><ul id="ba-history"><li class="muted">Loading…</li></ul></details>
     </div>
     <div class="modal-foot">
       ${live ? `<button class="btn danger left" data-action="bk-cancel" data-id="${b.id}">Cancel booking</button>` : `<button class="btn left" data-action="bk-restore" data-id="${b.id}">Restore booking</button>`}
-      <button class="btn" data-action="edit-booking" data-id="${b.id}">Edit details</button>
+      <button class="btn" data-action="copy-booking" data-id="${b.id}">${ICON.copy}Copy e-mail</button>
       <button class="btn" data-action="close-modal">Close</button>
     </div>`);
   loadHistoryInto('#ba-history', { table: 'bookings', rowId: b.id }, b.booked_by === 'Imported' ? 'Imported from the Excel calendar, not changed since.' : 'No changes recorded.');
@@ -1303,20 +1371,24 @@ function openBooking(pref = {}) {
     <form id="bk-form" novalidate>
     <div class="modal-body">
       <div class="form-grid">
-        <label class="field req full"><span>Car</span><select id="bk-car"><option value="">Choose a car…</option>${groups}</select></label>
         <label class="field req full"><span>Driver / client</span><input type="text" id="bk-client" value="${esc(b.client)}" placeholder="e.g. Andrei Pana - Autocritica" maxlength="200"></label>
-        <div class="field full"><span>Dates</span><div id="bk-rp"></div></div>
-        <label class="field req"><span>Start date</span><input type="date" id="bk-start" value="${b.start_date}"></label>
-        <label class="field req"><span>End date (car comes back)</span><input type="date" id="bk-end" value="${b.end_date}"></label>
-        <div class="field full"><span>Number of days</span>
-          <div class="row"><input type="number" id="bk-days" min="1" max="730" value="${nDays(b)}" style="width:90px">
-          ${[1, 2, 3, 5, 7, 14].map(d => `<button type="button" class="chip-btn" data-bkd="${d}">${plural(d, 'day')}</button>`).join('')}</div></div>
+        <label class="field req full"><span>Car</span><select id="bk-car"><option value="">Choose a car…</option>${groups}</select></label>
+        <div class="field full"><span>Dates <em class="muted">· click the start day, then the return day</em></span><div id="bk-rp"></div>
+          <div class="date-row">
+            <label><span>From</span><input type="date" id="bk-start" value="${b.start_date}"></label>
+            <label><span>Return</span><input type="date" id="bk-end" value="${b.end_date}"></label>
+            <label><span>Days</span><input type="number" id="bk-days" min="1" max="730" value="${nDays(b)}"></label>
+            <span class="date-chips">${[1, 2, 3, 5, 7, 14].map(d => `<button type="button" class="chip-btn" data-bkd="${d}">${d}d</button>`).join('')}</span>
+          </div></div>
+        <div class="checks full" id="bk-checks"></div>
         <label class="field"><span>Type</span><select id="bk-purpose">${opts(typeList, b.purpose)}</select></label>
-        <label class="field"><span>Status</span><select id="bk-status">${opts(BOOKING_STATUSES, b.status)}</select></label>
-        <label class="field"><span>Booked by</span><input type="text" id="bk-by" value="${esc(b.booked_by || '')}" maxlength="80"></label>
-        <label class="field full"><span>Notes</span><textarea id="bk-notes" maxlength="1000" placeholder="Pick-up place, contact, damage…">${esc(b.notes || '')}</textarea></label>
+        <label class="field"><span>Notes</span><input type="text" id="bk-notes" maxlength="1000" value="${esc(b.notes || '')}" placeholder="Pick-up place, contact…"></label>
+        <details class="full more-fields"${b.status !== 'Confirmed' ? ' open' : ''}><summary>Status (${esc(b.status)}) and booked by (${esc(b.booked_by || '–')})</summary>
+          <div class="form-grid">
+            <label class="field"><span>Status</span><select id="bk-status">${opts(BOOKING_STATUSES, b.status)}</select></label>
+            <label class="field"><span>Booked by</span><input type="text" id="bk-by" value="${esc(b.booked_by || '')}" maxlength="80"></label>
+          </div></details>
       </div>
-      <div class="checks" id="bk-checks"></div>
     </div>
     <div class="modal-foot">
       ${existing ? `<button type="button" class="btn left" data-action="booking-actions" data-id="${existing.id}">◀ Back</button>` : ''}
@@ -1402,7 +1474,7 @@ function openBooking(pref = {}) {
   });
   $$('#bk-form input, #bk-form select').forEach(i => i.addEventListener('input', () => i.classList.remove('invalid')));
   check();
-  if (fine()) (b.car_id ? el('bk-client') : el('bk-car')).focus();
+  if (fine()) el('bk-client').focus();
 }
 
 // ------------------------------------------------------------------ car window (VIN = identity; description, category, plates, history)
@@ -1606,14 +1678,14 @@ function calendarSheet() {
 }
 
 async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in WeCom chat or email.'); return; } catch { /* fall back below */ }
+  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it in WeCom or your e-mail.'); return; } catch { /* fall back below */ }
   const ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
   document.body.appendChild(ta); ta.select();
   let ok = false;
   try { ok = document.execCommand('copy'); } catch { ok = false; }
   ta.remove();
-  if (ok) return toast('Copied. Paste it in WeCom chat or email.');
+  if (ok) return toast('Copied. Paste it in WeCom or your e-mail.');
   window.prompt('Copy this text:', text);
 }
 function quickText() {
@@ -1642,12 +1714,23 @@ const actions = {
   'quick-reserve'() { openQuickReserve(); },
   'q-reserve'(el) { quickReserve(el.dataset.car, el.dataset.from); },
   'q-copy'() { copyText(quickText()); },
+  'q-excel'() { actions[S.quick.model === 'All' ? 'q-export-all' : 'q-export'](); },
   'q-export'() { const Q = S.quick; exportXlsx(`Availability_${(Q.model === 'All' ? 'All_models' : Q.model).replace(/\W+/g, '_')}_${Q.days}d_${stamp()}.xlsx`, [{ name: 'Availability', rows: findRows(Q.model, Q.days, Q.start, (({ res, extra }) => [...res, ...extra])(quickResults())) }]); },
   'q-export-all'() {
     const Q = S.quick;
     const ov = modelOverview(Q.days, Q.start).map(o => ({ Model: o.model, 'Can be reserved': o.pool, 'Free today': o.freeToday, 'Earliest start': o.earliest ? fmt(o.earliest) : 'no car', 'Return by': o.to ? fmt(o.to) : '', 'Best car': o.bestCar || '', 'Other cars free then': o.earliest ? o.others : '' }));
     exportXlsx(`Availability_by_model_${Q.days}d_${stamp()}.xlsx`, [{ name: 'Overview', rows: ov }, ...S.models.map(m => ({ name: m.name.replace(/[\\/?*[\]:]/g, '-'), rows: findRows(m.name, Q.days, Q.start) }))]);
   },
+  'cal-more'(el, e) { e.stopPropagation(); if ($('.menu')) return closeMenu(); openCalMenu(el); },
+  'cal-weeks'(el) { S.cal.weeks = +el.dataset.w; saveCal(); renderTimeline(); },
+  'quick-car'(el) { const c = S.carMap.get(el.dataset.id); S.quick.q = c ? (c.plate || c.id) : ''; S.quick.model = 'All'; openQuickReserve(); },
+  'copy-booking'(el) {
+    const text = bookingText(bookingById(+el.dataset.id));
+    const box = $('#mail-box');
+    if (box) { box.hidden = false; $('#mail-text').value = text; $('#mail-text').style.height = `${$('#mail-text').scrollHeight + 4}px`; box.scrollIntoView({ block: 'nearest' }); }
+    copyText(text);
+  },
+  'ba-dates'() { const p = $('#ba-dates'); if (p) { p.hidden = !p.hidden; if (!p.hidden) p.scrollIntoView({ block: 'nearest' }); } },
   'cal-mode'(el) { S.cal.mode = el.dataset.mode; saveCal(); renderCalendar(); },
   'cal-move'(el) { S.cal.start = addDays(S.cal.start, +el.dataset.d); renderTimeline(); },
   'cal-today'() { S.cal.start = addDays(mondayOf(todayISO()), -7); renderTimeline(); },
@@ -1718,7 +1801,8 @@ function closeMenu() { const m = $('.menu'); if (m) m.remove(); }
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
-  if (!el) { closeMenu(); return; }
+  if (!el) { if (!e.target.closest('.menu')) closeMenu(); return; }
+  if (el.closest('.menu')) closeMenu();
   const fn = actions[el.dataset.action];
   if (fn && !el.disabled) fn(el, e);
 });
